@@ -61,25 +61,59 @@ def create_process_handler(cfg: Config):
         has_pty = process.get_terminal_type() is not None
         logger.info("[%s] Shell started (PTY: %s, term: %s)", username, has_pty, process.get_terminal_type())
 
+        # Register Tab-completion on the channel if line editor is available
+        if hasattr(process.channel, "register_key"):
+            def tab_completer(line: str, pos: int):
+                token = line[:pos].split()[-1] if line[:pos].split() else ""
+                matches = session.get_autocompletions(line[:pos])
+                if not matches:
+                    return False
+                if len(matches) == 1:
+                    match = matches[0]
+                    completion = match[len(token):]
+                    return (line[:pos] + completion + line[pos:], pos + len(completion))
+
+                import os
+                common = os.path.commonprefix(matches)
+                if len(common) > len(token):
+                    completion = common[len(token):]
+                    return (line[:pos] + completion + line[pos:], pos + len(completion))
+
+                process.stdout.write("\n" + "  ".join(matches) + "\n" + session.prompt())
+                return (line, pos)
+
+            process.channel.register_key("\t", tab_completer)
+
         # Display welcome banner
         process.stdout.write(session.get_motd())
         await process.stdout.drain()
 
         # Main REPL
+        prompt_needed = True
         while session.is_active:
             try:
-                cmd_line = await session.line_editor.read_line(
-                    reader=process.stdin,
-                    writer=process.stdout,
-                    prompt=session.prompt(),
-                    completer=session.get_autocompletions
-                )
+                if prompt_needed:
+                    process.stdout.write(session.prompt())
+                    await process.stdout.drain()
+                    prompt_needed = False
+                cmd_line = await process.stdin.readline()
+                prompt_needed = True
+            except asyncssh.TerminalSizeChanged:
+                # Window resized (e.g. MobaXterm minimized or resized)
+                # Keep prompt_needed = False so we do not reprint prompt on resize
+                continue
+            except (asyncssh.BreakReceived, asyncssh.SignalReceived):
+                process.stdout.write("^C\n")
+                prompt_needed = True
+                continue
+            except (asyncssh.DisconnectError, asyncssh.ConnectionLost, asyncio.CancelledError, ConnectionResetError, OSError):
+                break
             except Exception as e:
                 logger.error("Session read error: %s", e)
                 break
 
-            # None indicates EOF / exit / Ctrl+D on empty line
-            if cmd_line is None or not session.is_active:
+            # None or empty string on EOF (Ctrl+D) / connection closed
+            if not cmd_line or not session.is_active:
                 break
 
             cmd_clean = cmd_line.strip()
@@ -118,9 +152,9 @@ async def start_server(cfg: Config = default_config):
         server_factory=lambda: SimSSHServer(cfg),
         server_host_keys=[host_key_path],
         process_factory=create_process_handler(cfg),
-        line_editor=False,
-        line_echo=False,
-        keepalive_interval=15,
+        line_editor=True,
+        line_echo=True,
+        keepalive_interval=30,
         keepalive_count_max=5,
         tcp_keepalive=True
     )
