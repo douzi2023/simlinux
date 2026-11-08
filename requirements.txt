@@ -1,0 +1,4 @@
+asyncssh>=2.14.0
+openai>=1.0.0
+python-dotenv>=1.0.0
+cryptography>=41.0.0

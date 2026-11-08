@@ -1,0 +1,26 @@
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+ssh_host_key
+*.pem
+*.key
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# IDE & editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Virtual environment
+venv/
+.venv/
+env/
+ENV/

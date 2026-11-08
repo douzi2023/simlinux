@@ -1,0 +1,30 @@
+{
+  "id": "debian-12",
+  "name": "Debian GNU/Linux 12 (bookworm)",
+  "os_release": {
+    "NAME": "Debian GNU/Linux",
+    "VERSION_ID": "12",
+    "VERSION": "12 (bookworm)",
+    "ID": "debian",
+    "PRETTY_NAME": "Debian GNU/Linux 12 (bookworm)"
+  },
+  "uname": "Linux {hostname} 6.1.0-18-amd64 x86_64 GNU/Linux",
+  "uname_vars": {
+    "hostname": "simlinux",
+    "kernel": "Linux",
+    "release": "6.1.0-18-amd64",
+    "arch": "x86_64"
+  },
+  "pkg_manager": "apt",
+  "installed_packages": [
+    "bash",
+    "coreutils",
+    "curl",
+    "git",
+    "python3",
+    "openssh-server",
+    "vim",
+    "sudo"
+  ],
+  "issue": "Debian GNU/Linux 12 \\n \\l\n"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "alpine-3.19",
+  "name": "Alpine Linux v3.19",
+  "os_release": {
+    "NAME": "Alpine Linux",
+    "ID": "alpine",
+    "VERSION_ID": "3.19.1",
+    "PRETTY_NAME": "Alpine Linux v3.19"
+  },
+  "uname": "Linux {hostname} 6.6.14-0-virt x86_64 Linux",
+  "uname_vars": {
+    "hostname": "simlinux",
+    "kernel": "Linux",
+    "release": "6.6.14-0-virt",
+    "arch": "x86_64"
+  },
+  "pkg_manager": "apk",
+  "installed_packages": [
+    "alpine-baselayout",
+    "busybox",
+    "openrc",
+    "apk-tools"
+  ],
+  "issue": "Welcome to Alpine Linux 3.19\nKernel \\r on an \\m (\\l)\n"
+}
