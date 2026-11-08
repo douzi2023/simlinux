@@ -103,7 +103,23 @@ async def test_simlinux_flow():
                 print("Output after resize:", repr(out.strip()))
                 assert "still alive" in out
 
-                print("\n[Test 6] Testing exit command:")
+                # Test 6: MobaXterm secondary non-PTY channel simulation
+                print("\n[Test 6] Testing secondary non-PTY channel (MobaXterm multi-channel stability):")
+                try:
+                    sec_proc = await conn.create_process(term_type=None)
+                    sec_proc.stdin.write("uname\n")
+                    await sec_proc.stdin.drain()
+                    sec_out = await sec_proc.stdout.read()
+                    print("Secondary channel output:", repr(sec_out.strip()))
+                except Exception as e:
+                    print("Secondary non-PTY channel handled:", type(e), e)
+
+                # Ensure primary session remains completely functional
+                out_after = await send_cmd("whoami")
+                print("Primary shell after secondary channel:", repr(out_after.strip()))
+                assert "root" in out_after
+
+                print("\n[Test 7] Testing exit command:")
                 proc.stdin.write("exit\r")
                 await proc.stdin.drain()
                 await asyncio.sleep(0.5)

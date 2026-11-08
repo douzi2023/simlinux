@@ -38,7 +38,7 @@ def create_process_handler(cfg: Config):
     async def handle_client(process: asyncssh.SSHServerProcess) -> None:
         username = process.get_extra_info("username") or cfg.ssh_username
         default_distro = cfg.distros.get(cfg.default_distro)
-        if not default_distro:
+        if not default_distro and cfg.distros:
             default_distro = next(iter(cfg.distros.values()))
 
         session = Session(
@@ -49,7 +49,13 @@ def create_process_handler(cfg: Config):
             cfg=cfg
         )
 
-        # Check if client executed a one-shot command (e.g. ssh user@host "uname -a")
+        # 1. Handle Subsystem request (e.g. sftp)
+        if process.subsystem:
+            logger.info("[%s] Subsystem requested: %s (closing subsystem channel)", username, process.subsystem)
+            process.exit(1)
+            return
+
+        # 2. Check if client executed a one-shot command (e.g. ssh user@host "uname -a")
         raw_cmd = process.command
         if raw_cmd:
             logger.info("[%s] Executing one-shot command: %s", username, raw_cmd)
@@ -57,12 +63,22 @@ def create_process_handler(cfg: Config):
             process.exit(0)
             return
 
-        # Interactive Shell Session
+        # 3. Check for PTY
         has_pty = process.get_terminal_type() is not None
         logger.info("[%s] Shell started (PTY: %s, term: %s)", username, has_pty, process.get_terminal_type())
 
-        # Register Tab-completion on the channel if line editor is available
-        if hasattr(process.channel, "register_key"):
+        # Non-interactive shell (no PTY)
+        if not has_pty:
+            line = await process.stdin.readline()
+            if line:
+                await session.dispatcher.dispatch(line.strip(), process.stdout)
+            process.exit(0)
+            return
+
+        # 4. Interactive Shell Session with PTY
+        # Only register Tab-completion if line editor is safely initialized
+        editor = getattr(process.channel, "_editor", None)
+        if editor is not None and hasattr(process.channel, "register_key"):
             def tab_completer(line: str, pos: int):
                 token = line[:pos].split()[-1] if line[:pos].split() else ""
                 matches = session.get_autocompletions(line[:pos])
@@ -82,7 +98,10 @@ def create_process_handler(cfg: Config):
                 process.stdout.write("\n" + "  ".join(matches) + "\n" + session.prompt())
                 return (line, pos)
 
-            process.channel.register_key("\t", tab_completer)
+            try:
+                process.channel.register_key("\t", tab_completer)
+            except Exception as e:
+                logger.debug("Could not register tab key: %s", e)
 
         # Display welcome banner
         process.stdout.write(session.get_motd())

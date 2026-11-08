@@ -81,14 +81,26 @@ class Config:
     
     distros: Dict[str, DistroConfig] = field(default_factory=dict)
 
+    def __post_init__(self):
+        if not self.distros:
+            distros_path = self.base_dir / "distros"
+            self.distros = load_distros(distros_path)
+        if not self.distros:
+            # Fallback default distro if distros/ folder is missing or empty
+            fallback = DistroConfig.from_dict({
+                "id": "ubuntu-22.04",
+                "name": "Ubuntu 22.04 LTS",
+                "pkg_manager": "apt",
+                "os_release": {"PRETTY_NAME": "Ubuntu 22.04 LTS", "NAME": "Ubuntu", "VERSION": "22.04 LTS (Jammy Jellyfish)", "ID": "ubuntu"},
+                "uname": "Linux {hostname} 5.15.0-101-generic #111-Ubuntu SMP Wed Mar 27 16:25:27 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux"
+            }, "ubuntu-22.04")
+            self.distros["ubuntu-22.04"] = fallback
+        if self.default_distro not in self.distros:
+            self.default_distro = next(iter(self.distros.keys()))
+
     @classmethod
     def load(cls) -> "Config":
-        cfg = cls()
-        distros_path = cfg.base_dir / "distros"
-        cfg.distros = load_distros(distros_path)
-        if cfg.default_distro not in cfg.distros and cfg.distros:
-            cfg.default_distro = next(iter(cfg.distros.keys()))
-        return cfg
+        return cls()
 
 
 # Global configuration instance
