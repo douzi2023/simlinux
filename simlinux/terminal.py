@@ -1,5 +1,6 @@
 import asyncio
 from typing import List, Optional, Callable
+import asyncssh
 
 
 class Ansi:
@@ -47,6 +48,7 @@ class LineEditor:
         self.history: List[str] = []
         self.history_index: int = 0
         self.history_limit = history_limit
+        self._prev_was_cr: bool = False
 
     async def read_line(
         self,
@@ -79,11 +81,23 @@ class LineEditor:
         while True:
             try:
                 char = await reader.read(1)
+            except asyncssh.TerminalSizeChanged:
+                # Terminal resized (e.g. MobaXterm minimized / restored / resized)
+                # Keep session alive and continue reading
+                continue
+            except (asyncssh.DisconnectError, asyncssh.ConnectionLost, asyncio.CancelledError, ConnectionResetError, OSError):
+                return None
             except Exception:
                 return None
 
             if not char:  # Connection closed
                 return None
+
+            # Ignore trailing \n if previous character was \r (handles CRLF sent by some SSH clients)
+            if char == "\n" and self._prev_was_cr:
+                self._prev_was_cr = False
+                continue
+            self._prev_was_cr = (char == "\r")
 
             # Handle Enter (\r or \n)
             if char in ("\r", "\n"):
@@ -132,7 +146,10 @@ class LineEditor:
                 if cursor_pos > 0:
                     cursor_pos -= 1
                     buffer.pop(cursor_pos)
-                    redraw_line()
+                    if cursor_pos == len(buffer):
+                        writer.write("\b \b")
+                    else:
+                        redraw_line()
                     await writer.drain()
 
             # Tab (\t) - Autocompletion

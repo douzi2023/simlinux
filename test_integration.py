@@ -95,7 +95,15 @@ async def test_simlinux_flow():
                 print(out.strip())
 
                 # Test exit
-                print("\n[Test 5] Testing exit command:")
+                print("\n[Test 5] Testing Terminal Resize (MobaXterm background / window change):")
+                proc.change_terminal_size(120, 40)
+                await asyncio.sleep(0.5)
+                # Ensure session is still completely alive after resize
+                out = await send_cmd("echo 'still alive'")
+                print("Output after resize:", repr(out.strip()))
+                assert "still alive" in out
+
+                print("\n[Test 6] Testing exit command:")
                 proc.stdin.write("exit\r")
                 await proc.stdin.drain()
                 await asyncio.sleep(0.5)

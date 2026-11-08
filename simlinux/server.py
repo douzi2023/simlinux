@@ -117,7 +117,12 @@ async def start_server(cfg: Config = default_config):
         cfg.ssh_port,
         server_factory=lambda: SimSSHServer(cfg),
         server_host_keys=[host_key_path],
-        process_factory=create_process_handler(cfg)
+        process_factory=create_process_handler(cfg),
+        line_editor=False,
+        line_echo=False,
+        keepalive_interval=15,
+        keepalive_count_max=5,
+        tcp_keepalive=True
     )
 
     logger.info("=" * 60)
