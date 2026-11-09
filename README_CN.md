@@ -46,7 +46,7 @@ simlinux/
 │   ├── __init__.py
 │   ├── config.py                # 配置与发行版加载器
 │   ├── vfs.py                   # 内存虚拟文件系统（树形节点、路径解析）
-│   ├── terminal.py              # PTY 终端行规程（按键解析、Tab补全、ANSI颜色）
+│   ├── terminal.py              # ANSI 颜色与终端转义格式化
 │   ├── commands.py              # 内置命令分发器与 LLM 协同
 │   ├── llm_engine.py            # DeepSeek / OpenAI 异步流式引擎
 │   ├── session.py               # 用户会话状态隔离（CWD、历史记录、Prompt）
@@ -55,10 +55,8 @@ simlinux/
 ├── .env                         # 本地配置文件（API Key、端口、账号）
 ├── requirements.txt             # 依赖列表
 ├── ssh_host_key                 # SSH 服务端 RSA 私钥（缺失会自动生成）
-├── ssh-keygen.py                # 辅助密钥生成工具
 ├── main.py                      # 服务启动主入口
 ├── test_vfs.py                  # 虚拟文件系统单元测试
-├── test_line_editor.py          # 终端按键与行编辑单元测试
 └── test_integration.py          # 端到端 SSH 完整集成测试
 ```
 
@@ -163,11 +161,8 @@ ssh root@127.0.0.1 -p 2222
 
 ```bash
 # 1. 运行虚拟文件系统测试
-python test_vfs.py
+python -m unittest test_vfs.py
 
-# 2. 运行终端按键规程测试（退格、历史上下键、Tab补全）
-python test_line_editor.py
-
-# 3. 运行端到端 SSH 真实连接与 LLM 集成测试
+# 2. 运行端到端 SSH 真实连接与 LLM 集成测试
 python test_integration.py
 ```

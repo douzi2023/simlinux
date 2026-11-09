@@ -46,7 +46,7 @@ simlinux/
 │   ├── __init__.py
 │   ├── config.py                # Configuration & distro loader
 │   ├── vfs.py                   # In-memory virtual filesystem & path resolution
-│   ├── terminal.py              # PTY line discipline, escape codes, Tab completion
+│   ├── terminal.py              # ANSI color formatting & terminal codes
 │   ├── commands.py              # Builtin command dispatcher & VFS integration
 │   ├── llm_engine.py            # DeepSeek / OpenAI async streaming engine
 │   ├── session.py               # User session state isolation (CWD, history, prompt)
@@ -55,10 +55,8 @@ simlinux/
 ├── .env                         # Active local settings (API key, ports, credentials)
 ├── requirements.txt             # Project dependencies
 ├── ssh_host_key                 # RSA host key for SSH server (auto-generated if missing)
-├── ssh-keygen.py                # Host key generator helper
 ├── main.py                      # Server CLI entry point
 ├── test_vfs.py                  # Unit tests for Virtual File System
-├── test_line_editor.py          # Unit tests for Terminal Line Editor
 └── test_integration.py          # End-to-end SSH integration tests
 ```
 
@@ -157,15 +155,12 @@ Any command not handled natively by the VFS is simulated by the LLM, including:
 
 ## 🧪 Automated Testing
 
-SimLinux includes a full test suite:
+SimLinux includes a full automated test suite:
 
 ```bash
 # 1. Test Virtual File System
-python test_vfs.py
+python -m unittest test_vfs.py
 
-# 2. Test Terminal Line Discipline (Backspace, Arrow keys, Tab completion)
-python test_line_editor.py
-
-# 3. Test End-to-End SSH Connection & Live LLM Simulation
+# 2. Test End-to-End SSH Connection & Live LLM Simulation
 python test_integration.py
 ```

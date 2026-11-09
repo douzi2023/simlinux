@@ -2,7 +2,7 @@ import os
 from typing import Dict, List, Tuple, Optional
 from simlinux.config import DistroConfig, Config
 from simlinux.vfs import VirtualFileSystem
-from simlinux.terminal import LineEditor, Ansi, colorize
+from simlinux.terminal import Ansi, colorize
 from simlinux.llm_engine import LLMEngine
 from simlinux.commands import CommandDispatcher
 
@@ -37,7 +37,6 @@ class Session:
         self.llm_history: List[Tuple[str, str]] = []
 
         # Engines & Handlers
-        self.line_editor = LineEditor()
         self.llm_engine = LLMEngine(
             api_key=cfg.openai_api_key,
             base_url=cfg.base_url,

@@ -76,7 +76,6 @@ def create_process_handler(cfg: Config):
             return
 
         # 4. Interactive Shell Session with PTY
-        # Only register Tab-completion if line editor is safely initialized
         editor = getattr(process.channel, "_editor", None)
         if editor is not None and hasattr(process.channel, "register_key"):
             def tab_completer(line: str, pos: int):
@@ -84,17 +83,10 @@ def create_process_handler(cfg: Config):
                 matches = session.get_autocompletions(line[:pos])
                 if not matches:
                     return False
-                if len(matches) == 1:
-                    match = matches[0]
-                    completion = match[len(token):]
-                    return (line[:pos] + completion + line[pos:], pos + len(completion))
-
-                import os
-                common = os.path.commonprefix(matches)
-                if len(common) > len(token):
-                    completion = common[len(token):]
-                    return (line[:pos] + completion + line[pos:], pos + len(completion))
-
+                match = matches[0] if len(matches) == 1 else os.path.commonprefix(matches)
+                if len(match) > len(token):
+                    compl = match[len(token):]
+                    return (line[:pos] + compl + line[pos:], pos + len(compl))
                 process.stdout.write("\n" + "  ".join(matches) + "\n" + session.prompt())
                 return (line, pos)
 

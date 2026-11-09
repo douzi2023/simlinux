@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 
 class VFSNode:
@@ -23,9 +24,7 @@ class VFSNode:
 
     @property
     def size(self) -> int:
-        if self.is_dir:
-            return 4096
-        return len(self.content.encode("utf-8"))
+        return 4096 if self.is_dir else len(self.content.encode("utf-8"))
 
 
 class VirtualFileSystem:
@@ -33,12 +32,10 @@ class VirtualFileSystem:
         self.root = VFSNode("", is_dir=True)
 
     def resolve_path(self, path: str, cwd: str = "/") -> str:
-        """Resolve a path with CWD and relative tokens into an absolute canonical path."""
         path = path.strip()
         if not path:
             return cwd
 
-        # Handle home directory shorthand
         if path == "~" or path.startswith("~/"):
             home = "/root" if cwd.startswith("/root") else "/home/user"
             path = home + path[1:]
@@ -46,15 +43,14 @@ class VirtualFileSystem:
         if not path.startswith("/"):
             path = cwd.rstrip("/") + "/" + path
 
-        # Normalize segments
-        parts = [p for p in path.split("/") if p and p != "."]
         stack: List[str] = []
-        for part in parts:
-            if part == "..":
-                if stack:
-                    stack.pop()
-            else:
-                stack.append(part)
+        for part in path.split("/"):
+            if part and part != ".":
+                if part == "..":
+                    if stack:
+                        stack.pop()
+                else:
+                    stack.append(part)
 
         return "/" + "/".join(stack)
 
@@ -63,9 +59,8 @@ class VirtualFileSystem:
         if abs_path == "/":
             return self.root
 
-        parts = [p for p in abs_path.split("/") if p]
         curr = self.root
-        for part in parts:
+        for part in [p for p in abs_path.split("/") if p]:
             if not curr.is_dir or part not in curr.children:
                 return None
             curr = curr.children[part]
@@ -134,10 +129,7 @@ class VirtualFileSystem:
             existing = curr.children[file_name]
             if existing.is_dir:
                 raise IsADirectoryError(f"'{path}' is a directory")
-            if append:
-                existing.content += content
-            else:
-                existing.content = content
+            existing.content = (existing.content + content) if append else content
             existing.mtime = time.time()
             return existing
         else:
@@ -167,11 +159,8 @@ class VirtualFileSystem:
             raise PermissionError("rm: it is dangerous to operate recursively on '/'")
 
         parts = [p for p in abs_path.split("/") if p]
-        parent_parts = parts[:-1]
-        target_name = parts[-1]
-
         curr = self.root
-        for part in parent_parts:
+        for part in parts[:-1]:
             if part not in curr.children:
                 if force:
                     return
@@ -180,119 +169,62 @@ class VirtualFileSystem:
             if not curr.is_dir:
                 raise NotADirectoryError(f"rm: '{part}' is not a directory")
 
+        target_name = parts[-1]
         if target_name not in curr.children:
             if force:
                 return
             raise FileNotFoundError(f"rm: cannot remove '{path}': No such file or directory")
 
         target = curr.children[target_name]
-        if target.is_dir:
-            if not recursive:
-                raise IsADirectoryError(f"rm: cannot remove '{path}': Is a directory")
+        if target.is_dir and not recursive:
+            raise IsADirectoryError(f"rm: cannot remove '{path}': Is a directory")
         del curr.children[target_name]
 
     def init_standard_linux_tree(self, distro_info: dict, hostname: str = "simlinux") -> None:
-        """Create standard Linux directories and essential system files."""
-        dirs = [
-            "/bin", "/boot", "/dev", "/etc", "/home/user", "/lib", "/media",
-            "/mnt", "/opt", "/proc", "/root", "/run", "/sbin", "/srv",
-            "/sys", "/tmp", "/usr/bin", "/usr/lib", "/usr/local/bin",
-            "/usr/share", "/var/log", "/var/tmp"
-        ]
+        """Create standard Linux directory structure and base system files."""
+        dirs = (
+            "/bin /boot /dev /etc /home/user /lib /media /mnt /opt /proc /root /run "
+            "/sbin /srv /sys /tmp /usr/bin /usr/lib /usr/local/bin /usr/share /var/log /var/tmp"
+        ).split()
         for d in dirs:
             self.mkdir(d, recursive=True)
 
-        # /etc/os-release
-        os_release_data = distro_info.get("os_release", {})
-        os_release_text = "\n".join(f'{k}="{v}"' for k, v in os_release_data.items()) + "\n"
-        self.write_file("/etc/os-release", os_release_text)
-
-        # /etc/issue
-        issue_text = distro_info.get("issue", f"{distro_info.get('name', 'SimLinux')} \\n \\l\n")
-        self.write_file("/etc/issue", issue_text)
-
-        # /etc/hostname
+        # /etc system files
+        os_release = "\n".join(f'{k}="{v}"' for k, v in distro_info.get("os_release", {}).items()) + "\n"
+        self.write_file("/etc/os-release", os_release)
+        self.write_file("/etc/issue", distro_info.get("issue", f"{distro_info.get('name', 'SimLinux')} \\n \\l\n"))
         self.write_file("/etc/hostname", f"{hostname}\n")
-
-        # /etc/passwd
-        passwd_text = (
+        self.write_file("/etc/passwd", (
             "root:x:0:0:root:/root:/bin/bash\n"
-            "daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\n"
-            "bin:x:2:2:bin:/bin:/usr/sbin/nologin\n"
-            "sys:x:3:3:sys:/dev:/usr/sbin/nologin\n"
             "user:x:1000:1000:user:/home/user:/bin/bash\n"
-            "nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin\n"
-        )
-        self.write_file("/etc/passwd", passwd_text)
-
-        # /etc/hosts
-        hosts_text = (
-            "127.0.0.1   localhost\n"
-            f"127.0.1.1   {hostname}\n"
-            "::1         localhost ip6-localhost ip6-loopback\n"
-        )
-        self.write_file("/etc/hosts", hosts_text)
+        ))
+        self.write_file("/etc/hosts", f"127.0.0.1   localhost\n127.0.1.1   {hostname}\n::1         localhost\n")
 
         # /proc pseudo files
-        uname_template = distro_info.get("uname", "Linux {hostname} 5.15.0-generic x86_64 GNU/Linux")
-        uname_vars = dict(distro_info.get("uname_vars", {}))
-        uname_vars.setdefault("hostname", hostname)
-        uname_vars.setdefault("kernel", "Linux")
-        uname_vars.setdefault("release", "5.15.0-generic")
-        uname_vars.setdefault("arch", "x86_64")
-        version_str = uname_template.format(**uname_vars) + "\n"
-        self.write_file("/proc/version", version_str)
+        uname_vars = {
+            "hostname": hostname, "kernel": "Linux",
+            "release": "5.15.0-generic", "arch": "x86_64",
+            **distro_info.get("uname_vars", {})
+        }
+        uname_str = distro_info.get("uname", "Linux {hostname} 5.15.0-generic x86_64 GNU/Linux").format(**uname_vars) + "\n"
+        self.write_file("/proc/version", uname_str)
+        self.write_file("/proc/cpuinfo", "processor\t: 0\nmodel name\t: Intel(R) Core(TM) Virtual CPU @ 2.80GHz\ncpu cores\t: 2\n")
+        self.write_file("/proc/meminfo", "MemTotal: 8148992 kB\nMemFree: 5214560 kB\nMemAvailable: 6890124 kB\n")
 
-        cpuinfo_text = (
-            "processor\t: 0\n"
-            "vendor_id\t: GenuineIntel\n"
-            "model name\t: Intel(R) Core(TM) Virtual CPU @ 2.80GHz\n"
-            "cpu MHz\t\t: 2800.000\n"
-            "cache size\t: 16384 KB\n"
-            "cpu cores\t: 2\n"
-        )
-        self.write_file("/proc/cpuinfo", cpuinfo_text)
-
-        meminfo_text = (
-            "MemTotal:        8148992 kB\n"
-            "MemFree:         5214560 kB\n"
-            "MemAvailable:    6890124 kB\n"
-            "Buffers:          210456 kB\n"
-            "Cached:          1845124 kB\n"
-        )
-        self.write_file("/proc/meminfo", meminfo_text)
-
-        # /root/README.txt & /root/tutorial.txt
-        readme_text = (
+        # /root user starter guides
+        self.write_file("/root/README.txt", (
             "====================================================\n"
             "       Welcome to SimLinux - Virtual Learning OS    \n"
             "====================================================\n\n"
-            "This is a simulated Linux environment designed for beginners.\n"
-            "- It does NOT run commands on the host machine.\n"
-            "- Standard Linux commands (ls, cd, mkdir, touch, cat, echo, rm, etc.) are built-in.\n"
-            "- Advanced commands (apt, python, curl, top, systemctl, etc.) are simulated by LLM.\n\n"
-            "Type 'tutorial' or 'help' for interactive learning lessons!\n"
-            "Type 'distro list' to view available Linux distributions.\n"
-            "Type 'distro <id>' (e.g., distro arch) to switch distro on the fly.\n"
-        )
-        self.write_file("/root/README.txt", readme_text)
-
-        tutorial_text = (
-            "Linux Beginner Quickstart Guide:\n\n"
-            "1. Navigation:\n"
-            "   pwd               Show current directory path\n"
-            "   ls -la            List all files with details\n"
-            "   cd /etc           Change directory to /etc\n"
-            "   cd ~              Go back to home directory\n\n"
-            "2. File Operations:\n"
-            "   touch test.txt    Create an empty file\n"
-            "   mkdir mydir       Create a directory\n"
-            "   echo 'hi' > a.txt Write text into a file\n"
-            "   cat a.txt         Display file contents\n"
-            "   rm test.txt       Delete a file\n\n"
-            "3. System Info:\n"
-            "   uname -a          Kernel and machine architecture\n"
-            "   whoami            Current logged-in user\n"
-            "   cat /etc/os-release Show Linux distribution version\n"
-        )
-        self.write_file("/root/tutorial.txt", tutorial_text)
+            "Safe simulated Linux terminal for beginners.\n"
+            "- Built-in commands: ls, cd, mkdir, touch, cat, echo, rm, etc.\n"
+            "- LLM simulated commands: apt, python, curl, top, systemctl, etc.\n\n"
+            "Type 'tutorial' or 'help' for beginner lessons.\n"
+            "Type 'distro list' to view and switch Linux distributions.\n"
+        ))
+        self.write_file("/root/tutorial.txt", (
+            "Linux Beginner Quickstart:\n"
+            "1. Navigation:  pwd, ls -la, cd /etc, cd ~\n"
+            "2. Files:       touch a.txt, mkdir dir, echo 'hi' > a.txt, cat a.txt, rm a.txt\n"
+            "3. System:      uname -a, whoami, cat /etc/os-release\n"
+        ))
