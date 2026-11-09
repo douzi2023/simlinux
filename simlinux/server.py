@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 import os
 from typing import Optional
@@ -34,6 +35,100 @@ class SimSSHServer(asyncssh.SSHServer):
         return False
 
 
+def generate_mobaxterm_monitoring_block(session: Session, iteration: int) -> str:
+    cfg = session.cfg
+    mem_gb = getattr(cfg, "memory_gb", 8)
+    disk_gb = getattr(cfg, "disk_gb", 40)
+    cpu_cores = getattr(cfg, "cpu_cores", 2)
+    hostname = session.hostname
+    username = session.username
+    uptime_sec = 35000.0 + iteration * 1.5
+
+    # Memory calculations
+    mem_total_kb = mem_gb * 1024 * 1024
+    mem_free_kb = int(mem_total_kb * 0.65)
+    mem_avail_kb = int(mem_total_kb * 0.82)
+
+    # Disk calculations
+    disk_total_kb = disk_gb * 1024 * 1024
+    disk_used_kb = int(disk_total_kb * 0.18)
+    disk_avail_kb = disk_total_kb - disk_used_kb
+    disk_pct = int(disk_used_kb / disk_total_kb * 100)
+
+    # Dynamic CPU ticks: ~3-5% CPU usage
+    base_idle = 22625563 + iteration * 142
+    base_user = 2255 + iteration * 5
+    base_sys = 2290 + iteration * 3
+
+    # Dynamic network counters
+    eth_rx = 9876543 + iteration * 1536
+    eth_tx = 8765432 + iteration * 768
+
+    now_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    return (
+        "==> /proc/meminfo <==\n"
+        f"MemTotal:        {mem_total_kb:8d} kB\n"
+        f"MemFree:         {mem_free_kb:8d} kB\n"
+        f"MemAvailable:    {mem_avail_kb:8d} kB\n"
+        f"Buffers:           210456 kB\n"
+        f"Cached:           1845124 kB\n"
+        f"SwapCached:             0 kB\n"
+        f"Active:           1024000 kB\n"
+        f"Inactive:          821124 kB\n\n"
+        "==> /proc/stat <==\n"
+        f"cpu  {base_user} 34 {base_sys} {base_idle} 6290 127 456 0 0 0\n"
+        f"cpu0 {base_user // max(1, cpu_cores)} 17 {base_sys // max(1, cpu_cores)} {base_idle // max(1, cpu_cores)} 3145 63 228 0 0 0\n\n"
+        "==> /proc/version <==\n"
+        "Linux version 5.15.0-50-generic (buildd@lcy02-amd64-001) (gcc version 11.2.0) #56-Ubuntu SMP\n\n"
+        "==> /proc/uptime <==\n"
+        f"{uptime_sec:.2f} {uptime_sec * 0.9:.2f}\n\n"
+        "==> /proc/loadavg <==\n"
+        "0.12 0.08 0.03 1/142 1236\n\n"
+        "==> /proc/sys/fs/file-nr <==\n"
+        "1024\t0\t100000\n\n"
+        "==> /proc/sys/kernel/hostname <==\n"
+        f"{hostname}\n\n"
+        "==> /proc/net/dev <==\n"
+        "Inter-|   Receive                                                |  Transmit\n"
+        " face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n"
+        "    lo: 1234567     123    0    0    0     0          0         0  1234567     123    0    0    0     0       0          0\n"
+        f"  eth0: {eth_rx:8d}    5678    0    0    0     0          0         0  {eth_tx:8d}    4567    0    0    0     0       0          0\n\n"
+        "==> /proc/df <==\n"
+        "Filesystem     1K-blocks      Used Available Use% Mounted on\n"
+        f"/dev/root       {disk_total_kb:8d}  {disk_used_kb:8d}  {disk_avail_kb:8d}  {disk_pct}% /\n"
+        "tmpfs            4096000         0   4096000   0% /dev/shm\n\n"
+        "==> /proc/who <==\n"
+        f"{username}     pts/0        {now_time} (127.0.0.1)\n\n"
+        "==> /proc/end <==\n"
+        "##Moba##\n"
+    )
+
+
+async def stream_mobaxterm_monitoring(session: Session, process: asyncssh.SSHServerProcess) -> None:
+    username = session.username
+    logger.info("[%s] MobaXterm remote monitoring stream started", username)
+    iteration = 0
+    try:
+        while not process.is_closing():
+            block = generate_mobaxterm_monitoring_block(session, iteration)
+            process.stdout.write(block)
+            await process.stdout.drain()
+            iteration += 1
+            await asyncio.sleep(1.5)
+    except (asyncssh.DisconnectError, asyncssh.ConnectionLost, asyncio.CancelledError,
+            ConnectionResetError, BrokenPipeError, OSError):
+        pass
+    except Exception as e:
+        logger.debug("[%s] MobaXterm monitoring stream stopped: %s", username, e)
+    finally:
+        try:
+            process.exit(0)
+        except Exception:
+            pass
+        logger.info("[%s] MobaXterm remote monitoring stream ended", username)
+
+
 def create_process_handler(cfg: Config):
     async def handle_client(process: asyncssh.SSHServerProcess) -> None:
         username = process.get_extra_info("username") or cfg.ssh_username
@@ -61,9 +156,8 @@ def create_process_handler(cfg: Config):
             if raw_cmd:
                 raw_cmd_str = raw_cmd.strip()
                 # Intercept MobaXterm background remote monitoring loop
-                if "##Moba##" in raw_cmd_str or raw_cmd_str.startswith("while"):
-                    logger.info("[%s] MobaXterm background monitoring probe handled cleanly", username)
-                    process.exit(0)
+                if "##Moba##" in raw_cmd_str or ("/proc/meminfo" in raw_cmd_str and "while" in raw_cmd_str):
+                    await stream_mobaxterm_monitoring(session, process)
                     return
 
                 logger.info("[%s] Executing one-shot command: %s", username, raw_cmd)

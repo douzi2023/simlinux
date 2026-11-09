@@ -240,12 +240,45 @@ class VirtualFileSystem:
             f"MemAvailable:    {mem_avail_kb:8d} kB\n"
             f"Buffers:           210456 kB\n"
             f"Cached:           1845124 kB\n"
+            f"SwapCached:             0 kB\n"
+            f"Active:           1024000 kB\n"
+            f"Inactive:          821124 kB\n"
             f"SwapTotal:        2097148 kB\n"
             f"SwapFree:         2097148 kB\n"
         )
         self.write_file("/proc/meminfo", meminfo_text)
         self.write_file("/proc/uptime", "35024.12 68923.45\n")
         self.write_file("/proc/loadavg", "0.15 0.08 0.03 1/142 1236\n")
+
+        # /proc/stat
+        cpu_stat_lines = ["cpu  2255 34 2290 22625563 6290 127 456 0 0 0"]
+        for i in range(max(1, cpu_cores)):
+            cpu_stat_lines.append(f"cpu{i} 1132 17 1145 11312781 3145 63 228 0 0 0")
+        cpu_stat_lines.extend([
+            "intr 123456 12 34 0 0 0 0 0",
+            "ctxt 9876543",
+            "btime 1700000000",
+            "processes 12345",
+            "procs_running 1",
+            "procs_blocked 0",
+            "softirq 1234567 0 54321 0 0 0 0 0 0 0 0"
+        ])
+        self.write_file("/proc/stat", "\n".join(cpu_stat_lines) + "\n")
+
+        # /proc/sys
+        self.mkdir("/proc/sys/fs", recursive=True)
+        self.write_file("/proc/sys/fs/file-nr", "1024\t0\t100000\n")
+        self.mkdir("/proc/sys/kernel", recursive=True)
+        self.write_file("/proc/sys/kernel/hostname", f"{hostname}\n")
+
+        # /proc/net/dev
+        self.mkdir("/proc/net", recursive=True)
+        self.write_file("/proc/net/dev", (
+            "Inter-|   Receive                                                |  Transmit\n"
+            " face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n"
+            "    lo: 1234567     123    0    0    0     0          0         0  1234567     123    0    0    0     0       0          0\n"
+            "  eth0: 9876543    5678    0    0    0     0          0         0  8765432    4567    0    0    0     0       0          0\n"
+        ))
 
         # /root user starter guides
         self.write_file("/root/README.txt", (

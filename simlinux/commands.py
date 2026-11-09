@@ -375,7 +375,8 @@ class CommandDispatcher:
 
     async def cmd_head(self, args: List[str], writer) -> str:
         lines_n = 10
-        target = None
+        verbose = False
+        targets = []
         i = 0
         while i < len(args):
             if args[i] == "-n" and i + 1 < len(args):
@@ -386,23 +387,36 @@ class CommandDispatcher:
                 try: lines_n = int(args[i][2:])
                 except ValueError: pass
                 i += 1
+            elif args[i] in ("-v", "--verbose"):
+                verbose = True
+                i += 1
             elif not args[i].startswith("-"):
-                target = args[i]
+                targets.append(args[i])
                 i += 1
             else:
                 i += 1
-        if not target:
+        if not targets:
             return ""
-        try:
-            content = self.session.vfs.read_file(target, self.session.cwd)
-            lines = content.splitlines()[:lines_n]
-            return await self._write(writer, "\n".join(lines) + ("\n" if lines else ""))
-        except Exception as e:
-            return await self._write(writer, f"head: {target}: {e}\n")
+        chunks = []
+        show_header = verbose or len(targets) > 1
+        for idx, target in enumerate(targets):
+            try:
+                content = self.session.vfs.read_file(target, self.session.cwd)
+                lines = content.splitlines()[:lines_n]
+                chunk = ""
+                if show_header:
+                    prefix = "\n" if idx > 0 else ""
+                    chunk += f"{prefix}==> {target} <==\n"
+                chunk += "\n".join(lines) + ("\n" if lines else "")
+                chunks.append(chunk)
+            except Exception as e:
+                chunks.append(f"head: {target}: {e}\n")
+        return await self._write(writer, "".join(chunks))
 
     async def cmd_tail(self, args: List[str], writer) -> str:
         lines_n = 10
-        target = None
+        verbose = False
+        targets = []
         i = 0
         while i < len(args):
             if args[i] == "-n" and i + 1 < len(args):
@@ -413,19 +427,44 @@ class CommandDispatcher:
                 try: lines_n = int(args[i][2:])
                 except ValueError: pass
                 i += 1
+            elif args[i] in ("-v", "--verbose"):
+                verbose = True
+                i += 1
             elif not args[i].startswith("-"):
-                target = args[i]
+                targets.append(args[i])
                 i += 1
             else:
                 i += 1
-        if not target:
+        if not targets:
             return ""
-        try:
-            content = self.session.vfs.read_file(target, self.session.cwd)
-            lines = content.splitlines()[-lines_n:]
-            return await self._write(writer, "\n".join(lines) + ("\n" if lines else ""))
-        except Exception as e:
-            return await self._write(writer, f"tail: {target}: {e}\n")
+        chunks = []
+        show_header = verbose or len(targets) > 1
+        for idx, target in enumerate(targets):
+            try:
+                content = self.session.vfs.read_file(target, self.session.cwd)
+                lines = content.splitlines()[-lines_n:]
+                chunk = ""
+                if show_header:
+                    prefix = "\n" if idx > 0 else ""
+                    chunk += f"{prefix}==> {target} <==\n"
+                chunk += "\n".join(lines) + ("\n" if lines else "")
+                chunks.append(chunk)
+            except Exception as e:
+                chunks.append(f"tail: {target}: {e}\n")
+        return await self._write(writer, "".join(chunks))
+
+    async def cmd_who(self, args: List[str], writer) -> str:
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        return await self._write(writer, f"{self.session.username}    pts/0        {now_str} (127.0.0.1)\n")
+
+    async def cmd_w(self, args: List[str], writer) -> str:
+        t_str = datetime.datetime.now().strftime("%H:%M:%S")
+        out = (
+            f" {t_str} up 12 days,  4:18,  1 user,  load average: 0.12, 0.08, 0.03\n"
+            "USER     TTY      FROM             LOGIN@   IDLE   JCPU   PCPU WHAT\n"
+            f"{self.session.username:<8} pts/0    127.0.0.1        12:00    1.00s  0.02s  0.00s -bash\n"
+        )
+        return await self._write(writer, out)
 
     async def cmd_date(self, args: List[str], writer) -> str:
         now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%a %b %d %H:%M:%S UTC %Y")

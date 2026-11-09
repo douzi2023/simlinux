@@ -111,11 +111,17 @@ async def test_simlinux_flow():
                 print("MobaXterm probe 1 output:\n", res1.stdout.strip()[:100], "...")
                 assert "README.txt" in res1.stdout
 
-                # 6b. MobaXterm monitoring loop probe
+                # 6b. MobaXterm monitoring loop streaming probe
                 moba_cmd2 = "while true; do sleep 1;head -v -n 8 /proc/meminfo; head -v -n 2 /proc/stat /proc/version;echo '##Moba##'; done"
-                res2 = await conn.run(moba_cmd2)
-                print("MobaXterm probe 2 exited cleanly with status:", res2.exit_status)
-                assert res2.exit_status == 0
+                async with conn.create_process(command=moba_cmd2) as moba_proc:
+                    moba_out = ""
+                    while "##Moba##" not in moba_out:
+                        chunk = await asyncio.wait_for(moba_proc.stdout.read(1024), timeout=5.0)
+                        moba_out += chunk
+                    print("MobaXterm monitoring stream verified! Block preview:\n", moba_out[:150], "...\n##Moba## received!")
+                    assert "==> /proc/meminfo <==" in moba_out
+                    assert "##Moba##" in moba_out
+                    moba_proc.close()
 
                 # 6c. Concurrent secondary non-PTY channel with abrupt close
                 sec_proc = await conn.create_process(term_type=None)

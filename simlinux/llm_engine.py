@@ -53,7 +53,6 @@ class LLMEngine:
 
         distro_name = distro_info.get("name", "Linux")
         pkg_manager = distro_info.get("pkg_manager", "apt")
-        installed_pkgs = distro_info.get("installed_packages", [])
 
         hw = hardware or {}
         cpu_cores = hw.get("cpu_cores", 2)
@@ -61,15 +60,28 @@ class LLMEngine:
         memory_gb = hw.get("memory_gb", 8)
         disk_gb = hw.get("disk_gb", 40)
 
+        # Distro-specific package manager info
+        if pkg_manager == "apt":
+            pkg_details = "apt, apt-get, dpkg"
+        elif pkg_manager == "pacman":
+            pkg_details = "pacman"
+        elif pkg_manager == "apk":
+            pkg_details = "apk"
+        else:
+            pkg_details = pkg_manager
+
         system_prompt = (
-            f"You are an authentic Linux terminal simulator. You are simulating an interactive shell on {distro_name}.\n"
-            f"Hardware & OS Details:\n"
+            f"You are an authentic Linux terminal simulator. You are simulating an interactive bash shell on {distro_name}.\n"
+            f"Hardware & Environment:\n"
             f"- Distribution: {distro_name}\n"
             f"- CPU: {cpu_cores} cores ({cpu_model})\n"
             f"- RAM: {memory_gb} GB\n"
             f"- Disk: {disk_gb} GB\n"
-            f"- Package Manager: {pkg_manager}\n"
-            f"- Pre-installed Packages: {', '.join(installed_pkgs[:25])}\n"
+            f"- Package Manager: {pkg_manager} (commands: {pkg_details})\n"
+            f"- Installed Environment: This is a full standard Linux installation. Standard Linux tools and utilities "
+            f"are pre-installed and available, including: {pkg_details}, coreutils, tar, gzip, bzip2, zip, unzip, curl, "
+            f"wget, git, python3, pip, grep, sed, awk, find, vim, nano, bash, systemctl, service, ps, top, htop, "
+            f"ip, ping, ssh, netstat, df, free, etc.\n"
             f"- Current Working Directory (CWD): {cwd}\n"
             f"- Files/Folders currently in CWD: {', '.join(files_in_cwd) if files_in_cwd else '(empty directory)'}\n"
             "\n"
@@ -77,10 +89,11 @@ class LLMEngine:
             "1. Output ONLY the raw terminal standard output (stdout) and standard error (stderr).\n"
             "2. DO NOT output markdown code blocks (NO ``` or ```bash fences).\n"
             "3. DO NOT output conversational explanations, notes, intros, or apologies.\n"
-            "4. Respect the distro specifics (e.g. if package manager is apt, pacman command should fail unless on Arch).\n"
-            "5. If a command runs interactively (like top, htop, vi, nano), output a single terminal snapshot representation matching the specified hardware.\n"
-            "6. If the command would normally produce no output (e.g. successful mv, cp, export), produce empty output.\n"
-            "7. If the command does not exist, output standard shell error, e.g. `bash: <cmd>: command not found`.\n"
+            "4. Distro Specifics: Commands belonging to another distro's package manager MUST fail (e.g. pacman on Ubuntu must say 'bash: pacman: command not found'; apt on Arch must say 'bash: apt: command not found').\n"
+            "5. If a command is run without arguments or with --help (such as apt, tar, git, curl, etc.), output its authentic standard usage/help text.\n"
+            "6. If an interactive command runs (like top, htop, vi, nano), output a single terminal snapshot representation matching the specified hardware.\n"
+            "7. If a command would normally produce no output on success (e.g. successful mv, cp, export, touch), produce completely empty output.\n"
+            "8. ONLY output 'command not found' if the command does not exist in standard Linux or is a tool from another distro.\n"
         )
 
         user_content = f"CWD: {cwd}\n"
