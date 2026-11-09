@@ -101,10 +101,34 @@ DEFAULT_DISTRO=ubuntu-22.04
 python main.py
 ```
 
-支持命令行参数动态覆盖：
+支持丰富的命令行参数与虚拟硬件自定义：
 ```bash
-python main.py --port 2222 --distro ubuntu-22.04 --user root --password 123
+# 标准启动
+python main.py
+
+# 自定义虚拟硬件规格：4 核 CPU、16G 内存、100G 硬盘、自定义主机名
+python main.py --cpu 4 --memory 16G --disk 100G --hostname dev-box
+
+# 高级启动：指定特定 CPU 型号、Arch Linux 发行版、端口与账号
+python main.py --port 2222 --cpu 8 --cpu-model "AMD EPYC 7763" --memory 32G --disk 500G --distro arch
 ```
+
+#### CLI 启动参数列表：
+| 参数 | 说明 | 默认值 |
+| :--- | :--- | :--- |
+| `--cpu`, `--cpu-cores` | 虚拟 CPU 核心数（影响 `/proc/cpuinfo`, `nproc`, `lscpu`） | `2` |
+| `--cpu-model` | 虚拟 CPU 型号名称 | `Intel(R) Core(TM) Virtual CPU @ 2.80GHz` |
+| `--memory`, `--ram` | 虚拟内存大小，如 `4G`, `16G`, `32G`, `8192M`（影响 `free -h`, `/proc/meminfo`） | `8G` |
+| `--disk`, `--disk-size` | 虚拟硬盘容量，如 `20G`, `100G`, `500G`（影响 `df -h`） | `40G` |
+| `--hostname` | 主机名（终端提示符与 `/etc/hostname` 显示） | `simlinux` |
+| `--distro`, `-d` | 默认初始发行版（`ubuntu-22.04`, `arch`, `debian-12`, `alpine-3.19`） | `ubuntu-22.04` |
+| `--port`, `-p` | SSH 监听端口 | `2222` |
+| `--host` | SSH 监听地址 | `0.0.0.0` |
+| `--user`, `-u` | SSH 登录用户名 | `root` |
+| `--password` | SSH 登录密码 | `123` |
+| `--model`, `-m` | LLM 大模型名称 | `deepseek-chat` |
+| `--base-url` | LLM API 接口基地址 | `https://api.deepseek.com` |
+| `--debug` | 开启详细调试日志模式 | `False` |
 
 ### 4. 使用 SSH 客户端连接
 

@@ -101,10 +101,34 @@ Run `main.py`:
 python main.py
 ```
 
-Command-line flags are supported:
+Command-line flags and custom hardware specifications are fully supported:
 ```bash
-python main.py --port 2222 --distro ubuntu-22.04 --user root --password 123
+# Standard startup
+python main.py
+
+# Custom hardware specs: 4 vCPU, 16GB RAM, 100GB Disk, custom hostname
+python main.py --cpu 4 --memory 16G --disk 100G --hostname dev-box
+
+# Advanced configuration with custom CPU model, distro, and credentials
+python main.py --port 2222 --cpu 8 --cpu-model "AMD EPYC 7763" --memory 32G --disk 500G --distro arch
 ```
+
+#### CLI Startup Options:
+| Flag | Description | Default |
+| :--- | :--- | :--- |
+| `--cpu`, `--cpu-cores` | Number of virtual CPU cores (`/proc/cpuinfo`, `nproc`, `lscpu`) | `2` |
+| `--cpu-model` | Virtual CPU model name string | `Intel(R) Core(TM) Virtual CPU @ 2.80GHz` |
+| `--memory`, `--ram` | Virtual RAM size, e.g. `4G`, `16G`, `32G`, `8192M` (`free -h`, `/proc/meminfo`) | `8G` |
+| `--disk`, `--disk-size` | Virtual disk size, e.g. `20G`, `100G`, `500G` (`df -h`) | `40G` |
+| `--hostname` | Machine hostname displayed in prompt and `/etc/hostname` | `simlinux` |
+| `--distro`, `-d` | Default Linux distribution (`ubuntu-22.04`, `arch`, `debian-12`, `alpine-3.19`) | `ubuntu-22.04` |
+| `--port`, `-p` | SSH server listening port | `2222` |
+| `--host` | SSH server bind address | `0.0.0.0` |
+| `--user`, `-u` | SSH login username | `root` |
+| `--password` | SSH login password | `123` |
+| `--model`, `-m` | LLM model name | `deepseek-chat` |
+| `--base-url` | LLM API base URL | `https://api.deepseek.com` |
+| `--debug` | Enable verbose debug logging | `False` |
 
 ### 4. Connect via SSH
 

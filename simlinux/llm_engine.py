@@ -24,7 +24,8 @@ class LLMEngine:
         cwd: str,
         files_in_cwd: List[str],
         history: List[Tuple[str, str]],
-        writer
+        writer,
+        hardware: Optional[dict] = None
     ) -> str:
         """
         Stream simulated command output from LLM directly into the terminal writer.
@@ -54,10 +55,19 @@ class LLMEngine:
         pkg_manager = distro_info.get("pkg_manager", "apt")
         installed_pkgs = distro_info.get("installed_packages", [])
 
+        hw = hardware or {}
+        cpu_cores = hw.get("cpu_cores", 2)
+        cpu_model = hw.get("cpu_model", "Intel(R) Core(TM) Virtual CPU @ 2.80GHz")
+        memory_gb = hw.get("memory_gb", 8)
+        disk_gb = hw.get("disk_gb", 40)
+
         system_prompt = (
             f"You are an authentic Linux terminal simulator. You are simulating an interactive shell on {distro_name}.\n"
-            f"OS Details:\n"
+            f"Hardware & OS Details:\n"
             f"- Distribution: {distro_name}\n"
+            f"- CPU: {cpu_cores} cores ({cpu_model})\n"
+            f"- RAM: {memory_gb} GB\n"
+            f"- Disk: {disk_gb} GB\n"
             f"- Package Manager: {pkg_manager}\n"
             f"- Pre-installed Packages: {', '.join(installed_pkgs[:25])}\n"
             f"- Current Working Directory (CWD): {cwd}\n"
@@ -68,7 +78,7 @@ class LLMEngine:
             "2. DO NOT output markdown code blocks (NO ``` or ```bash fences).\n"
             "3. DO NOT output conversational explanations, notes, intros, or apologies.\n"
             "4. Respect the distro specifics (e.g. if package manager is apt, pacman command should fail unless on Arch).\n"
-            "5. If a command runs interactively (like top, htop, vi, nano), output a single terminal snapshot representation.\n"
+            "5. If a command runs interactively (like top, htop, vi, nano), output a single terminal snapshot representation matching the specified hardware.\n"
             "6. If the command would normally produce no output (e.g. successful mv, cp, export), produce empty output.\n"
             "7. If the command does not exist, output standard shell error, e.g. `bash: <cmd>: command not found`.\n"
         )

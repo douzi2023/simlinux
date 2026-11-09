@@ -62,6 +62,24 @@ def load_distros(distros_dir: Path) -> Dict[str, DistroConfig]:
     return distros
 
 
+def parse_size_to_gb(val: Any, default: int = 8) -> int:
+    if val is None or val == "":
+        return default
+    if isinstance(val, (int, float)):
+        return max(1, int(val))
+    val_str = str(val).strip().upper()
+    try:
+        if val_str.endswith("TB") or val_str.endswith("T"):
+            return max(1, int(float(val_str.rstrip("TB").strip()) * 1024))
+        if val_str.endswith("GB") or val_str.endswith("G"):
+            return max(1, int(float(val_str.rstrip("GB").strip())))
+        if val_str.endswith("MB") or val_str.endswith("M"):
+            return max(1, int(float(val_str.rstrip("MB").strip()) // 1024))
+        return max(1, int(val_str))
+    except (ValueError, TypeError):
+        return default
+
+
 @dataclass
 class Config:
     base_dir: Path = BASE_DIR
@@ -78,6 +96,12 @@ class Config:
     
     hostname: str = os.getenv("HOSTNAME", "simlinux")
     default_distro: str = os.getenv("DEFAULT_DISTRO", "ubuntu-22.04")
+
+    # Hardware Virtual Specs
+    cpu_cores: int = int(os.getenv("CPU_CORES", "2"))
+    cpu_model: str = os.getenv("CPU_MODEL", "Intel(R) Core(TM) Virtual CPU @ 2.80GHz")
+    memory_gb: int = field(default_factory=lambda: parse_size_to_gb(os.getenv("MEMORY_GB", "8"), default=8))
+    disk_gb: int = field(default_factory=lambda: parse_size_to_gb(os.getenv("DISK_GB", "40"), default=40))
     
     distros: Dict[str, DistroConfig] = field(default_factory=dict)
 

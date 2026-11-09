@@ -24,7 +24,14 @@ class Session:
 
         # Virtual File System
         self.vfs = VirtualFileSystem()
-        self.vfs.init_standard_linux_tree(self.distro.raw_data, self.hostname)
+        self.vfs.init_standard_linux_tree(
+            self.distro.raw_data,
+            self.hostname,
+            cpu_cores=getattr(cfg, "cpu_cores", 2),
+            cpu_model=getattr(cfg, "cpu_model", "Intel(R) Core(TM) Virtual CPU @ 2.80GHz"),
+            memory_gb=getattr(cfg, "memory_gb", 8),
+            disk_gb=getattr(cfg, "disk_gb", 40)
+        )
 
         # Working Directories
         self.cwd = "/root" if self.username == "root" else f"/home/{self.username}"
@@ -79,8 +86,8 @@ class Session:
         # Builtin commands to complete
         builtins = [
             "ls", "ll", "cd", "pwd", "cat", "touch", "mkdir", "rm", "cp", "mv",
-            "echo", "whoami", "id", "hostname", "uname", "date", "uptime",
-            "clear", "history", "distro", "tutorial", "help", "exit", "logout"
+            "echo", "whoami", "id", "hostname", "uname", "date", "uptime", "df",
+            "free", "lscpu", "nproc", "clear", "history", "distro", "tutorial", "help", "exit", "logout"
         ]
 
         if is_first_token:
@@ -112,11 +119,15 @@ class Session:
             return []
 
     def get_motd(self) -> str:
+        cores = getattr(self.cfg, "cpu_cores", 2)
+        ram = getattr(self.cfg, "memory_gb", 8)
+        disk = getattr(self.cfg, "disk_gb", 40)
         banner = (
             colorize("=================================================================\n", Ansi.CYAN) +
             colorize(f"  Welcome to SimLinux ({self.distro.name}) - Learning Terminal  \n", Ansi.BOLD + Ansi.WHITE) +
             colorize("=================================================================\n", Ansi.CYAN) +
             f" * OS:       {self.distro.name} ({self.distro.pkg_manager})\n" +
+            f" * Specs:    {cores} vCPU | {ram}GB RAM | {disk}GB Disk\n" +
             f" * Hostname: {self.hostname} | User: {self.username}\n" +
             f" * AI Model: {self.cfg.model} via {self.cfg.base_url}\n" +
             f" * Mode:     Simulated Shell (Safe for beginners, no real host changes)\n\n" +

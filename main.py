@@ -10,7 +10,7 @@ import asyncio
 import logging
 import signal
 import sys
-from simlinux.config import Config
+from simlinux.config import Config, parse_size_to_gb
 from simlinux.server import start_server
 
 logging.basicConfig(
@@ -26,12 +26,27 @@ def parse_args():
         description="SimLinux: Simulated Linux Terminal via SSH for Beginners",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
+    # Network & SSH credentials
     parser.add_argument("--host", default=None, help="SSH server bind host")
     parser.add_argument("--port", "-p", type=int, default=None, help="SSH server bind port")
-    parser.add_argument("--distro", "-d", default=None, help="Default Linux distribution (e.g. ubuntu-22.04, arch, debian-12, alpine-3.19)")
     parser.add_argument("--user", "-u", default=None, help="SSH login username")
     parser.add_argument("--password", default=None, help="SSH login password")
+
+    # OS & Environment
+    parser.add_argument("--distro", "-d", default=None, help="Default Linux distribution (e.g. ubuntu-22.04, arch, debian-12, alpine-3.19)")
+    parser.add_argument("--hostname", default=None, help="Simulated system hostname")
+
+    # Hardware Virtual Specs
+    parser.add_argument("--cpu", "--cpu-cores", type=int, default=None, dest="cpu_cores", help="Virtual CPU cores (e.g. 2, 4, 8, 16)")
+    parser.add_argument("--cpu-model", default=None, help="Virtual CPU model name (e.g. 'AMD EPYC 7763', 'Apple M2 Max')")
+    parser.add_argument("--memory", "--ram", default=None, dest="memory", help="Virtual RAM size (e.g. 4G, 8G, 16G, 32G, 8192M)")
+    parser.add_argument("--disk", "--disk-size", default=None, dest="disk", help="Virtual disk size (e.g. 20G, 40G, 100G, 500G)")
+
+    # AI Model
     parser.add_argument("--model", "-m", default=None, help="LLM model name (e.g. deepseek-chat, gpt-4o-mini)")
+    parser.add_argument("--base-url", default=None, help="LLM API base URL")
+
+    # Logging
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging")
     return parser.parse_args()
 
@@ -48,17 +63,32 @@ async def main():
         cfg.ssh_host = args.host
     if args.port:
         cfg.ssh_port = args.port
+    if args.user:
+        cfg.ssh_username = args.user
+    if args.password:
+        cfg.ssh_password = args.password
+    if args.hostname:
+        cfg.hostname = args.hostname
+
     if args.distro:
         if args.distro in cfg.distros:
             cfg.default_distro = args.distro
         else:
             logger.warning("Specified distro '%s' not found. Available: %s", args.distro, list(cfg.distros.keys()))
-    if args.user:
-        cfg.ssh_username = args.user
-    if args.password:
-        cfg.ssh_password = args.password
+
+    if args.cpu_cores is not None:
+        cfg.cpu_cores = max(1, args.cpu_cores)
+    if args.cpu_model:
+        cfg.cpu_model = args.cpu_model
+    if args.memory:
+        cfg.memory_gb = parse_size_to_gb(args.memory, cfg.memory_gb)
+    if args.disk:
+        cfg.disk_gb = parse_size_to_gb(args.disk, cfg.disk_gb)
+
     if args.model:
         cfg.model = args.model
+    if args.base_url:
+        cfg.base_url = args.base_url
 
     server = await start_server(cfg)
 

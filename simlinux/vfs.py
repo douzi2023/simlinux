@@ -180,7 +180,15 @@ class VirtualFileSystem:
             raise IsADirectoryError(f"rm: cannot remove '{path}': Is a directory")
         del curr.children[target_name]
 
-    def init_standard_linux_tree(self, distro_info: dict, hostname: str = "simlinux") -> None:
+    def init_standard_linux_tree(
+        self,
+        distro_info: dict,
+        hostname: str = "simlinux",
+        cpu_cores: int = 2,
+        cpu_model: str = "Intel(R) Core(TM) Virtual CPU @ 2.80GHz",
+        memory_gb: int = 8,
+        disk_gb: int = 40
+    ) -> None:
         """Create standard Linux directory structure and base system files."""
         dirs = (
             "/bin /boot /dev /etc /home/user /lib /media /mnt /opt /proc /root /run "
@@ -208,8 +216,36 @@ class VirtualFileSystem:
         }
         uname_str = distro_info.get("uname", "Linux {hostname} 5.15.0-generic x86_64 GNU/Linux").format(**uname_vars) + "\n"
         self.write_file("/proc/version", uname_str)
-        self.write_file("/proc/cpuinfo", "processor\t: 0\nmodel name\t: Intel(R) Core(TM) Virtual CPU @ 2.80GHz\ncpu cores\t: 2\n")
-        self.write_file("/proc/meminfo", "MemTotal: 8148992 kB\nMemFree: 5214560 kB\nMemAvailable: 6890124 kB\n")
+
+        # Dynamic /proc/cpuinfo according to cpu_cores and cpu_model
+        cpu_entries = []
+        for i in range(max(1, cpu_cores)):
+            cpu_entries.append(
+                f"processor\t: {i}\n"
+                f"vendor_id\t: GenuineIntel\n"
+                f"model name\t: {cpu_model}\n"
+                f"cpu MHz\t\t: 2800.000\n"
+                f"cache size\t: 16384 KB\n"
+                f"cpu cores\t: {cpu_cores}\n"
+            )
+        self.write_file("/proc/cpuinfo", "\n".join(cpu_entries) + "\n")
+
+        # Dynamic /proc/meminfo according to memory_gb
+        mem_total_kb = memory_gb * 1024 * 1024
+        mem_free_kb = int(mem_total_kb * 0.65)
+        mem_avail_kb = int(mem_total_kb * 0.82)
+        meminfo_text = (
+            f"MemTotal:        {mem_total_kb:8d} kB\n"
+            f"MemFree:         {mem_free_kb:8d} kB\n"
+            f"MemAvailable:    {mem_avail_kb:8d} kB\n"
+            f"Buffers:           210456 kB\n"
+            f"Cached:           1845124 kB\n"
+            f"SwapTotal:        2097148 kB\n"
+            f"SwapFree:         2097148 kB\n"
+        )
+        self.write_file("/proc/meminfo", meminfo_text)
+        self.write_file("/proc/uptime", "35024.12 68923.45\n")
+        self.write_file("/proc/loadavg", "0.15 0.08 0.03 1/142 1236\n")
 
         # /root user starter guides
         self.write_file("/root/README.txt", (
@@ -217,7 +253,8 @@ class VirtualFileSystem:
             "       Welcome to SimLinux - Virtual Learning OS    \n"
             "====================================================\n\n"
             "Safe simulated Linux terminal for beginners.\n"
-            "- Built-in commands: ls, cd, mkdir, touch, cat, echo, rm, etc.\n"
+            f"- Virtual Hardware: {cpu_cores} vCPU, {memory_gb}GB RAM, {disk_gb}GB Disk\n"
+            "- Built-in commands: ls, cd, mkdir, touch, cat, echo, rm, df, free, etc.\n"
             "- LLM simulated commands: apt, python, curl, top, systemctl, etc.\n\n"
             "Type 'tutorial' or 'help' for beginner lessons.\n"
             "Type 'distro list' to view and switch Linux distributions.\n"

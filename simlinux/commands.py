@@ -97,12 +97,20 @@ class CommandDispatcher:
         except Exception:
             cwd_nodes = []
 
+        hardware = {
+            "cpu_cores": getattr(self.session.cfg, "cpu_cores", 2),
+            "cpu_model": getattr(self.session.cfg, "cpu_model", "Intel(R) Core(TM) Virtual CPU @ 2.80GHz"),
+            "memory_gb": getattr(self.session.cfg, "memory_gb", 8),
+            "disk_gb": getattr(self.session.cfg, "disk_gb", 40)
+        }
+
         return await self.session.llm_engine.execute_command_stream(
             command=command,
             distro_info=self.session.distro.raw_data,
             cwd=self.session.cwd,
             files_in_cwd=cwd_nodes,
             history=self.session.llm_history,
+            hardware=hardware,
             writer=writer
         )
 
@@ -286,10 +294,73 @@ class CommandDispatcher:
         return await self._write(writer, out)
 
     async def cmd_df(self, args: List[str], writer) -> str:
+        human = any("h" in a for a in args if a.startswith("-"))
+        disk_gb = getattr(self.session.cfg, "disk_gb", 40)
+        total_kb = disk_gb * 1024 * 1024
+        used_kb = int(total_kb * 0.18)
+        avail_kb = total_kb - used_kb
+        pct = int(used_kb / total_kb * 100)
+
+        if human:
+            out = (
+                "Filesystem      Size  Used Avail Use% Mounted on\n"
+                f"/dev/root       {disk_gb}G  {used_kb // (1024*1024) + 1}G   {avail_kb // (1024*1024)}G  {pct}% /\n"
+                "tmpfs           3.9G     0  3.9G   0% /dev/shm\n"
+            )
+        else:
+            out = (
+                "Filesystem     1K-blocks      Used Available Use% Mounted on\n"
+                f"/dev/root       {total_kb:8d}  {used_kb:8d}  {avail_kb:8d}  {pct}% /\n"
+                "tmpfs            4096000         0   4096000   0% /dev/shm\n"
+            )
+        return await self._write(writer, out)
+
+    async def cmd_free(self, args: List[str], writer) -> str:
+        human = any("h" in a or "m" in a or "g" in a for a in args if a.startswith("-"))
+        mem_gb = getattr(self.session.cfg, "memory_gb", 8)
+        total_kb = mem_gb * 1024 * 1024
+        used_kb = int(total_kb * 0.22)
+        free_kb = int(total_kb * 0.65)
+        buff_kb = int(total_kb * 0.13)
+        avail_kb = total_kb - used_kb
+
+        if human:
+            out = (
+                "               total        used        free      shared  buff/cache   available\n"
+                f"Mem:           {mem_gb:.1f}Gi       {used_kb / (1024*1024):.1f}Gi       {free_kb / (1024*1024):.1f}Gi        12Mi       {buff_kb / (1024*1024):.1f}Gi       {avail_kb / (1024*1024):.1f}Gi\n"
+                "Swap:          2.0Gi          0B       2.0Gi\n"
+            )
+        else:
+            out = (
+                "               total        used        free      shared  buff/cache   available\n"
+                f"Mem:        {total_kb:8d}    {used_kb:8d}    {free_kb:8d}       12288    {buff_kb:8d}    {avail_kb:8d}\n"
+                "Swap:        2097148           0     2097148\n"
+            )
+        return await self._write(writer, out)
+
+    async def cmd_nproc(self, args: List[str], writer) -> str:
+        cores = getattr(self.session.cfg, "cpu_cores", 2)
+        return await self._write(writer, f"{cores}\n")
+
+    async def cmd_lscpu(self, args: List[str], writer) -> str:
+        cores = getattr(self.session.cfg, "cpu_cores", 2)
+        model = getattr(self.session.cfg, "cpu_model", "Intel(R) Core(TM) Virtual CPU @ 2.80GHz")
+        core_list = f"0-{cores-1}" if cores > 1 else "0"
         out = (
-            "Filesystem     1K-blocks      Used Available Use% Mounted on\n"
-            "/dev/root       20971520   4194304  16777216  20% /\n"
-            "tmpfs            4096000         0   4096000   0% /dev/shm\n"
+            "Architecture:                    x86_64\n"
+            "CPU op-mode(s):                  32-bit, 64-bit\n"
+            "Byte Order:                      Little Endian\n"
+            f"CPU(s):                          {cores}\n"
+            f"On-line CPU(s) list:             {core_list}\n"
+            "Vendor ID:                       GenuineIntel\n"
+            f"Model name:                      {model}\n"
+            "CPU MHz:                         2800.000\n"
+            "BogoMIPS:                        5600.00\n"
+            "Virtualization:                  VT-x\n"
+            "L1d cache:                       64 KiB\n"
+            "L1i cache:                       64 KiB\n"
+            "L2 cache:                        1 MiB\n"
+            "L3 cache:                        16 MiB\n"
         )
         return await self._write(writer, out)
 

@@ -209,6 +209,7 @@ async def start_server(cfg: Config = default_config):
     logger.info("=" * 60)
     logger.info("  SimLinux SSH Server is RUNNING on %s:%d", cfg.ssh_host, cfg.ssh_port)
     logger.info("  Default Distribution: %s", cfg.default_distro)
+    logger.info("  Hardware Specs:       %d vCPU | %dGB RAM | %dGB Disk", cfg.cpu_cores, cfg.memory_gb, cfg.disk_gb)
     logger.info("  Login credentials:     ssh %s@<ip> -p %d  (Password: %s)", cfg.ssh_username, cfg.ssh_port, cfg.ssh_password)
     logger.info("  AI Backend:            %s (%s)", cfg.model, cfg.base_url)
     logger.info("=" * 60)
