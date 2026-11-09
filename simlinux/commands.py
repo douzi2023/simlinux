@@ -13,11 +13,31 @@ class CommandDispatcher:
 
     async def _write(self, writer, text: str) -> str:
         if text:
-            writer.write(text)
-            await writer.drain()
+            try:
+                writer.write(text)
+                await writer.drain()
+            except Exception:
+                pass
         return text
 
     async def dispatch(self, cmd_line: str, writer) -> str:
+        cmd_line = cmd_line.strip()
+        if not cmd_line:
+            return ""
+
+        # Handle chained commands (e.g. cmd1; cmd2; cmd3)
+        if ";" in cmd_line:
+            sub_cmds = [c.strip() for c in cmd_line.split(";") if c.strip()]
+            outputs = []
+            for sub in sub_cmds:
+                out = await self.dispatch_single(sub, writer)
+                if out:
+                    outputs.append(out)
+            return "".join(outputs)
+
+        return await self.dispatch_single(cmd_line, writer)
+
+    async def dispatch_single(self, cmd_line: str, writer) -> str:
         cmd_line = cmd_line.strip()
         if not cmd_line:
             return ""
@@ -105,6 +125,18 @@ class CommandDispatcher:
             pass
 
     # --- Builtin Commands ---
+
+    async def cmd_unset(self, args: List[str], writer) -> str:
+        return ""
+
+    async def cmd_export(self, args: List[str], writer) -> str:
+        return ""
+
+    async def cmd_true(self, args: List[str], writer) -> str:
+        return ""
+
+    async def cmd_sleep(self, args: List[str], writer) -> str:
+        return ""
 
     async def cmd_pwd(self, args: List[str], writer) -> str:
         return await self._write(writer, f"{self.session.cwd}\n")
@@ -214,6 +246,8 @@ class CommandDispatcher:
         return ""
 
     async def cmd_echo(self, args: List[str], writer) -> str:
+        if args == ["$$"]:
+            return await self._write(writer, "1234\n")
         return await self._write(writer, f"{' '.join(args)}\n")
 
     async def cmd_whoami(self, args: List[str], writer) -> str:
@@ -250,6 +284,77 @@ class CommandDispatcher:
         else:
             out = distro.uname.format(**vars_dict) + "\n"
         return await self._write(writer, out)
+
+    async def cmd_df(self, args: List[str], writer) -> str:
+        out = (
+            "Filesystem     1K-blocks      Used Available Use% Mounted on\n"
+            "/dev/root       20971520   4194304  16777216  20% /\n"
+            "tmpfs            4096000         0   4096000   0% /dev/shm\n"
+        )
+        return await self._write(writer, out)
+
+    async def cmd_ps(self, args: List[str], writer) -> str:
+        out = (
+            "UID        PID  PPID  C STIME TTY          TIME CMD\n"
+            "root         1     0  0 00:00 ?        00:00:01 /sbin/init\n"
+            f"{self.session.username}      1234     1  0 00:00 ?        00:00:00 -bash\n"
+            f"{self.session.username}      1235  1234  0 00:00 ?        00:00:00 ps\n"
+        )
+        return await self._write(writer, out)
+
+    async def cmd_head(self, args: List[str], writer) -> str:
+        lines_n = 10
+        target = None
+        i = 0
+        while i < len(args):
+            if args[i] == "-n" and i + 1 < len(args):
+                try: lines_n = int(args[i + 1])
+                except ValueError: pass
+                i += 2
+            elif args[i].startswith("-n"):
+                try: lines_n = int(args[i][2:])
+                except ValueError: pass
+                i += 1
+            elif not args[i].startswith("-"):
+                target = args[i]
+                i += 1
+            else:
+                i += 1
+        if not target:
+            return ""
+        try:
+            content = self.session.vfs.read_file(target, self.session.cwd)
+            lines = content.splitlines()[:lines_n]
+            return await self._write(writer, "\n".join(lines) + ("\n" if lines else ""))
+        except Exception as e:
+            return await self._write(writer, f"head: {target}: {e}\n")
+
+    async def cmd_tail(self, args: List[str], writer) -> str:
+        lines_n = 10
+        target = None
+        i = 0
+        while i < len(args):
+            if args[i] == "-n" and i + 1 < len(args):
+                try: lines_n = int(args[i + 1])
+                except ValueError: pass
+                i += 2
+            elif args[i].startswith("-n"):
+                try: lines_n = int(args[i][2:])
+                except ValueError: pass
+                i += 1
+            elif not args[i].startswith("-"):
+                target = args[i]
+                i += 1
+            else:
+                i += 1
+        if not target:
+            return ""
+        try:
+            content = self.session.vfs.read_file(target, self.session.cwd)
+            lines = content.splitlines()[-lines_n:]
+            return await self._write(writer, "\n".join(lines) + ("\n" if lines else ""))
+        except Exception as e:
+            return await self._write(writer, f"tail: {target}: {e}\n")
 
     async def cmd_date(self, args: List[str], writer) -> str:
         now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%a %b %d %H:%M:%S UTC %Y")

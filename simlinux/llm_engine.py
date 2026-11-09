@@ -118,20 +118,29 @@ class LLMEngine:
                 
                 # Normalize newlines; asyncssh PTY automatically translates \n to \r\n
                 normalized_text = text.replace("\r\n", "\n")
-                writer.write(normalized_text)
-                await writer.drain()
+                try:
+                    writer.write(normalized_text)
+                    await writer.drain()
+                except Exception:
+                    # Client disconnected or closed channel, terminate streaming cleanly
+                    break
 
             full_output = "".join(collected_output)
-            # Ensure final newline if output was non-empty and didn't end in newline
             if full_output and not full_output.endswith("\n"):
-                writer.write("\n")
-                await writer.drain()
+                try:
+                    writer.write("\n")
+                    await writer.drain()
+                except Exception:
+                    pass
 
             return full_output
 
         except Exception as e:
             logger.error("LLM execution error: %s", e)
             error_msg = f"simlinux: error communicating with LLM backend: {e}\n"
-            writer.write(error_msg)
-            await writer.drain()
+            try:
+                writer.write(error_msg)
+                await writer.drain()
+            except Exception:
+                pass
             return error_msg

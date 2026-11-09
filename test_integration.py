@@ -103,20 +103,29 @@ async def test_simlinux_flow():
                 print("Output after resize:", repr(out.strip()))
                 assert "still alive" in out
 
-                # Test 6: MobaXterm secondary non-PTY channel simulation
-                print("\n[Test 6] Testing secondary non-PTY channel (MobaXterm multi-channel stability):")
-                try:
-                    sec_proc = await conn.create_process(term_type=None)
-                    sec_proc.stdin.write("uname\n")
-                    await sec_proc.stdin.drain()
-                    sec_out = await sec_proc.stdout.read()
-                    print("Secondary channel output:", repr(sec_out.strip()))
-                except Exception as e:
-                    print("Secondary non-PTY channel handled:", type(e), e)
+                # Test 6: MobaXterm secondary non-PTY channel & probing simulation
+                print("\n[Test 6] Testing MobaXterm probing commands & multi-channel concurrency:")
+                # 6a. MobaXterm file browser probe
+                moba_cmd1 = "unset LANG LANGUAGE LC_CTYPE LC_COLLATE LC_MONETARY LC_NUMERIC LC_TIME LC_MESSAGES LC_ALL HUMAN_BLOCKS LS_COLORS;cd '.';cd '.';cd '.';pwd;ls -la"
+                res1 = await conn.run(moba_cmd1)
+                print("MobaXterm probe 1 output:\n", res1.stdout.strip()[:100], "...")
+                assert "README.txt" in res1.stdout
+
+                # 6b. MobaXterm monitoring loop probe
+                moba_cmd2 = "while true; do sleep 1;head -v -n 8 /proc/meminfo; head -v -n 2 /proc/stat /proc/version;echo '##Moba##'; done"
+                res2 = await conn.run(moba_cmd2)
+                print("MobaXterm probe 2 exited cleanly with status:", res2.exit_status)
+                assert res2.exit_status == 0
+
+                # 6c. Concurrent secondary non-PTY channel with abrupt close
+                sec_proc = await conn.create_process(term_type=None)
+                sec_proc.stdin.write("uname\n")
+                await sec_proc.stdin.drain()
+                sec_proc.close()  # Close abruptly like MobaXterm does
 
                 # Ensure primary session remains completely functional
                 out_after = await send_cmd("whoami")
-                print("Primary shell after secondary channel:", repr(out_after.strip()))
+                print("Primary shell after MobaXterm probes:", repr(out_after.strip()))
                 assert "root" in out_after
 
                 print("\n[Test 7] Testing exit command:")

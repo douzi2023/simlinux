@@ -37,111 +37,147 @@ class SimSSHServer(asyncssh.SSHServer):
 def create_process_handler(cfg: Config):
     async def handle_client(process: asyncssh.SSHServerProcess) -> None:
         username = process.get_extra_info("username") or cfg.ssh_username
-        default_distro = cfg.distros.get(cfg.default_distro)
-        if not default_distro and cfg.distros:
-            default_distro = next(iter(cfg.distros.values()))
+        try:
+            default_distro = cfg.distros.get(cfg.default_distro)
+            if not default_distro and cfg.distros:
+                default_distro = next(iter(cfg.distros.values()))
 
-        session = Session(
-            username=username,
-            hostname=cfg.hostname,
-            distro=default_distro,
-            all_distros=cfg.distros,
-            cfg=cfg
-        )
+            session = Session(
+                username=username,
+                hostname=cfg.hostname,
+                distro=default_distro,
+                all_distros=cfg.distros,
+                cfg=cfg
+            )
 
-        # 1. Handle Subsystem request (e.g. sftp)
-        if process.subsystem:
-            logger.info("[%s] Subsystem requested: %s (closing subsystem channel)", username, process.subsystem)
-            process.exit(1)
-            return
+            # 1. Handle Subsystem request (e.g. sftp)
+            if process.subsystem:
+                logger.info("[%s] Subsystem requested: %s (closing subsystem channel)", username, process.subsystem)
+                process.exit(1)
+                return
 
-        # 2. Check if client executed a one-shot command (e.g. ssh user@host "uname -a")
-        raw_cmd = process.command
-        if raw_cmd:
-            logger.info("[%s] Executing one-shot command: %s", username, raw_cmd)
-            await session.dispatcher.dispatch(raw_cmd, process.stdout)
-            process.exit(0)
-            return
+            # 2. Check if client executed a one-shot command (e.g. ssh user@host "uname -a")
+            raw_cmd = process.command
+            if raw_cmd:
+                raw_cmd_str = raw_cmd.strip()
+                # Intercept MobaXterm background remote monitoring loop
+                if "##Moba##" in raw_cmd_str or raw_cmd_str.startswith("while"):
+                    logger.info("[%s] MobaXterm background monitoring probe handled cleanly", username)
+                    process.exit(0)
+                    return
 
-        # 3. Check for PTY
-        has_pty = process.get_terminal_type() is not None
-        logger.info("[%s] Shell started (PTY: %s, term: %s)", username, has_pty, process.get_terminal_type())
+                logger.info("[%s] Executing one-shot command: %s", username, raw_cmd)
+                try:
+                    await session.dispatcher.dispatch(raw_cmd, process.stdout)
+                except Exception as e:
+                    logger.debug("[%s] One-shot command error: %s", username, e)
+                finally:
+                    try:
+                        process.exit(0)
+                    except Exception:
+                        pass
+                return
 
-        # Non-interactive shell (no PTY)
-        if not has_pty:
-            line = await process.stdin.readline()
-            if line:
-                await session.dispatcher.dispatch(line.strip(), process.stdout)
-            process.exit(0)
-            return
+            # 3. Check for PTY
+            has_pty = process.get_terminal_type() is not None
+            logger.info("[%s] Shell started (PTY: %s, term: %s)", username, has_pty, process.get_terminal_type())
 
-        # 4. Interactive Shell Session with PTY
-        editor = getattr(process.channel, "_editor", None)
-        if editor is not None and hasattr(process.channel, "register_key"):
-            def tab_completer(line: str, pos: int):
-                token = line[:pos].split()[-1] if line[:pos].split() else ""
-                matches = session.get_autocompletions(line[:pos])
-                if not matches:
-                    return False
-                match = matches[0] if len(matches) == 1 else os.path.commonprefix(matches)
-                if len(match) > len(token):
-                    compl = match[len(token):]
-                    return (line[:pos] + compl + line[pos:], pos + len(compl))
-                process.stdout.write("\n" + "  ".join(matches) + "\n" + session.prompt())
-                return (line, pos)
+            # Non-interactive shell (no PTY)
+            if not has_pty:
+                try:
+                    line = await process.stdin.readline()
+                    if line:
+                        await session.dispatcher.dispatch(line.strip(), process.stdout)
+                except Exception as e:
+                    logger.debug("[%s] Non-PTY read error: %s", username, e)
+                finally:
+                    try:
+                        process.exit(0)
+                    except Exception:
+                        pass
+                return
 
+            # 4. Interactive Shell Session with PTY
+            editor = getattr(process.channel, "_editor", None)
+            if editor is not None and hasattr(process.channel, "register_key"):
+                def tab_completer(line: str, pos: int):
+                    token = line[:pos].split()[-1] if line[:pos].split() else ""
+                    matches = session.get_autocompletions(line[:pos])
+                    if not matches:
+                        return False
+                    match = matches[0] if len(matches) == 1 else os.path.commonprefix(matches)
+                    if len(match) > len(token):
+                        compl = match[len(token):]
+                        return (line[:pos] + compl + line[pos:], pos + len(compl))
+                    try:
+                        process.stdout.write("\n" + "  ".join(matches) + "\n" + session.prompt())
+                    except Exception:
+                        pass
+                    return (line, pos)
+
+                try:
+                    process.channel.register_key("\t", tab_completer)
+                except Exception as e:
+                    logger.debug("Could not register tab key: %s", e)
+
+            # Display welcome banner
             try:
-                process.channel.register_key("\t", tab_completer)
-            except Exception as e:
-                logger.debug("Could not register tab key: %s", e)
+                process.stdout.write(session.get_motd())
+                await process.stdout.drain()
+            except Exception:
+                pass
 
-        # Display welcome banner
-        process.stdout.write(session.get_motd())
-        await process.stdout.drain()
+            # Main REPL
+            prompt_needed = True
+            while session.is_active:
+                try:
+                    if prompt_needed:
+                        process.stdout.write(session.prompt())
+                        await process.stdout.drain()
+                        prompt_needed = False
+                    cmd_line = await process.stdin.readline()
+                    prompt_needed = True
+                except asyncssh.TerminalSizeChanged:
+                    continue
+                except (asyncssh.BreakReceived, asyncssh.SignalReceived):
+                    try:
+                        process.stdout.write("^C\n")
+                    except Exception:
+                        pass
+                    prompt_needed = True
+                    continue
+                except (asyncssh.DisconnectError, asyncssh.ConnectionLost, asyncio.CancelledError, ConnectionResetError, BrokenPipeError, OSError):
+                    break
+                except Exception as e:
+                    logger.error("Session read error: %s", e)
+                    break
 
-        # Main REPL
-        prompt_needed = True
-        while session.is_active:
+                if not cmd_line or not session.is_active:
+                    break
+
+                cmd_clean = cmd_line.strip()
+                if not cmd_clean:
+                    continue
+
+                session.command_history.append(cmd_clean)
+                logger.info("[%s] CMD: %s", username, cmd_clean)
+
+                output = await session.dispatcher.dispatch(cmd_clean, process.stdout)
+                if output:
+                    session.llm_history.append((cmd_clean, output))
+                    if len(session.llm_history) > 10:
+                        session.llm_history.pop(0)
+
+            logger.info("[%s] Session closed", username)
+        except (asyncssh.DisconnectError, asyncssh.ConnectionLost, asyncio.CancelledError, ConnectionResetError, BrokenPipeError, OSError):
+            pass
+        except Exception as e:
+            logger.error("[%s] Session channel error: %s", username, e)
+        finally:
             try:
-                if prompt_needed:
-                    process.stdout.write(session.prompt())
-                    await process.stdout.drain()
-                    prompt_needed = False
-                cmd_line = await process.stdin.readline()
-                prompt_needed = True
-            except asyncssh.TerminalSizeChanged:
-                # Window resized (e.g. MobaXterm minimized or resized)
-                # Keep prompt_needed = False so we do not reprint prompt on resize
-                continue
-            except (asyncssh.BreakReceived, asyncssh.SignalReceived):
-                process.stdout.write("^C\n")
-                prompt_needed = True
-                continue
-            except (asyncssh.DisconnectError, asyncssh.ConnectionLost, asyncio.CancelledError, ConnectionResetError, OSError):
-                break
-            except Exception as e:
-                logger.error("Session read error: %s", e)
-                break
-
-            # None or empty string on EOF (Ctrl+D) / connection closed
-            if not cmd_line or not session.is_active:
-                break
-
-            cmd_clean = cmd_line.strip()
-            if not cmd_clean:
-                continue
-
-            session.command_history.append(cmd_clean)
-            logger.info("[%s] CMD: %s", username, cmd_clean)
-
-            output = await session.dispatcher.dispatch(cmd_clean, process.stdout)
-            if output:
-                session.llm_history.append((cmd_clean, output))
-                if len(session.llm_history) > 10:
-                    session.llm_history.pop(0)
-
-        logger.info("[%s] Session closed", username)
-        process.exit(0)
+                process.exit(0)
+            except Exception:
+                pass
 
     return handle_client
 
